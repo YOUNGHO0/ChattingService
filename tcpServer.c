@@ -8,6 +8,8 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <signal.h>
+
 #define TCP_PORT 5100 /* 서버의 포트 번호 */
 #define MAX_CLIENTS 100 /* 최대 클라이언트 수 */
 #define MAX_USERS 100 /* 최대 사용자 수 */
@@ -26,6 +28,9 @@ typedef struct userLoginInfo {
 
 userLoginInfo users[MAX_USERS]; // 사용자 정보를 저장할 배열
 int user_count = 0; // 현재 등록된 사용자 수
+int client_count = 0;
+int  client_csock[MAX_USERS];
+
 
 void setFdFlagAndListen(int ssock);
 
@@ -33,6 +38,12 @@ void broadcastToClients(int client_count, const int *client_csock, userinfo *use
 
 void setCsockFlag(int flags, int csock);
 void setPipeWithNonblock( int pipe_fd[][2], int client_count);
+
+void setNetworkConnection(struct sockaddr_in *cliaddr, userinfo *user);
+
+void handleUserLogin(int csock, userinfo *user);
+
+void setSignalHandler();
 
 int findUserIndex(char *userId, char *password) {
     for (int i = 0; i < user_count; i++) {
@@ -46,14 +57,38 @@ int findUserIndex(char *userId, char *password) {
 void handleClient(int csock, int client_index, int pipe_fd[][2], struct sockaddr_in cliaddr) {
     userinfo user;
     user.csockId = csock;
+
     close(pipe_fd[client_index][0]); // 자식은 읽기 디스크립터 닫기
+    setNetworkConnection(&cliaddr, &user);
 
-    /* 네트워크 주소를 문자열로 변경 */
-    inet_ntop(AF_INET, &cliaddr.sin_addr, user.message, BUFSIZ);
-    printf("Client is connected : %s\n", user.message);
-    fflush(stdout);
+    handleUserLogin(csock, &user);
 
-    // 로그인 또는 회원가입 여부 물어보기
+    while (1) {
+        int n = read(csock, user.message, BUFSIZ); // 클라이언트로부터 데이터 읽기
+        if (n == 0) {
+            printf("Client disconnected.\n");
+            break;
+        } else if (n < 0) {
+            perror("read issue()");
+            break;
+        }
+
+        user.message[n] = '\0';
+        printf("Received data from %s: %s\n", user.userName, user.message);
+        /* 부모 프로세스에게 받은 메시지를 전달 */
+        write(pipe_fd[client_index][1], &user, sizeof(user));
+
+        if (strncmp(user.message, "...", 3) == 0) {
+            close(csock);
+            break;
+        }
+    }
+
+    close(pipe_fd[client_index][1]); // 자식의 쓰기 디스크립터 닫기
+    exit(0);
+}
+
+void handleUserLogin(int csock, userinfo *user) {// 로그인 또는 회원가입 여부 물어보기
     char choice[10];
     write(csock, "로그인 또는 회원가입을 선택하세요 (login/signup): ", strlen("로그인 또는 회원가입을 선택하세요 (login/signup): "));
     read(csock, choice, sizeof(choice));
@@ -98,40 +133,40 @@ void handleClient(int csock, int client_index, int pipe_fd[][2], struct sockaddr
         // 사용자 추가
         strcpy(users[user_count].userId, userId);
         strcpy(users[user_count].password, password);
-        strcpy(user.userName,userId);
+        strcpy((*user).userName, userId);
         user_count++;
         write(csock, "회원가입 성공!\n", strlen("회원가입 성공!\n"));
     } else {
         write(csock, "잘못된 선택입니다. 연결을 종료합니다.\n", strlen("잘못된 선택입니다. 연결을 종료합니다.\n"));
         close(csock);
+        printf("소켓 닫기 : %d\n", csock);
         exit(0);
     }
+}
 
-    while (1) {
-        int n = read(csock, user.message, BUFSIZ); // 클라이언트로부터 데이터 읽기
-        if (n == 0) {
-            printf("Client disconnected.\n");
-            break;
-        } else if (n < 0) {
-            perror("read issue()");
-            break;
-        }
+void setNetworkConnection(struct sockaddr_in *cliaddr, userinfo *user) {/* 네트워크 주소를 문자열로 변경 */
+    inet_ntop(AF_INET, &(*cliaddr).sin_addr, (*user).message, BUFSIZ);
+    printf("Client is connected : %s\n", (*user).message);
+    fflush(stdout);
+}
 
-        user.message[n] = '\0';
-        printf("Received data from %s: %s\n", user.userName, user.message);
-        fflush(stdout);
 
-        /* 부모 프로세스에게 받은 메시지를 전달 */
-        write(pipe_fd[client_index][1], &user, sizeof(user));
+// SIGCHLD 신호 처리기
+void handle_sigchld(int sig) {
+    int status;
+    pid_t pid;
 
-        if (strncmp(user.message, "...", 3) == 0) {
-            close(csock);
-            break;
+    // 종료된 자식 프로세스를 기다림
+    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+        printf("Child process %d terminated.\n", pid);
+        // 자식이 종료되면 해당하는 소켓을 닫음
+        for (int i = 0; i < client_count; i++) {
+            if (client_csock[i] == -1) continue; // 이미 닫힌 소켓은 무시
+            printf("Closing socket: %d\n", client_csock[i]);
+            close(client_csock[i]);
+            client_csock[i] = -1; // 닫힌 소켓을 -1로 표시
         }
     }
-
-    close(pipe_fd[client_index][1]); // 자식의 쓰기 디스크립터 닫기
-    exit(0);
 }
 
 int main(int argc, char **argv) {
@@ -140,11 +175,13 @@ int main(int argc, char **argv) {
     struct sockaddr_in servaddr, cliaddr;
     int pipe_fd[MAX_CLIENTS][2];
 
+
+    setSignalHandler();
+
     if ((ssock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         perror("socket()");
         return -1;
     }
-
     memset(&servaddr, 0, sizeof(servaddr));
     servaddr.sin_family = AF_INET;
     servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -155,14 +192,10 @@ int main(int argc, char **argv) {
         return -1;
     }
 
-    int flags;
-
-
     setFdFlagAndListen(ssock);
 
     clen = sizeof(cliaddr);
-    int client_count = 0;
-    int  client_csock[MAX_USERS];
+
     while (1) {
         int csock = accept(ssock, (struct sockaddr *)&cliaddr, &clen);
 
@@ -178,13 +211,10 @@ int main(int argc, char **argv) {
                 continue;
             } else {
                 perror("accept()");
-                continue;
             }
         }
 
-        printf("client count %d\n", client_count);
-
-        flags = fcntl(csock, F_GETFL, 0);
+        int flags = fcntl(csock, F_GETFL, 0);
         setCsockFlag(flags, csock);
 
         if (client_count >= MAX_CLIENTS) {
@@ -210,6 +240,14 @@ int main(int argc, char **argv) {
     }
     close(ssock);
     return 0;
+}
+
+void setSignalHandler() {
+    struct sigaction sa;
+    sa.sa_handler = handle_sigchld;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART; // 신호 처리 후 자동 재시작
+    sigaction(SIGCHLD, &sa, NULL);
 }
 
 void setPipeWithNonblock( int pipe_fd[][2], int client_count) {
@@ -242,6 +280,7 @@ void broadcastToClients(int client_count, const int *client_csock, userinfo *use
 //                        printf("Parent received from child (User: %s): %s\n", user.userName, user.message);
     for (int i = 0; i < client_count; i++) {
         if (client_csock[i] != (*user).csockId) { // Exclude the sender
+            printf("소켓 으로 write : %d\n",client_csock[i]);
             if (write(client_csock[i], formatted_message, strlen(formatted_message)) < 0) {
                 perror("broadcast write");
             }
