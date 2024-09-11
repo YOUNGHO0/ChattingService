@@ -8,19 +8,14 @@
 #include <stdlib.h>
 
 #define TCP_PORT 5100 /* 서버의 포트 번호 */
+#define MAX_CLIENTS 100 /* 최대 클라이언트 수 */
 
 int main(int argc, char **argv) {
     int ssock;                 /* 소켓 디스크립터 정의 */
     socklen_t clen;
     struct sockaddr_in servaddr, cliaddr; /* 주소 구조체 정의 */
     char mesg[BUFSIZ];
-    int pipe_fd[2];            /* 파이프 파일 디스크립터: pipe_fd[0]는 읽기, pipe_fd[1]는 쓰기 */
-
-    /* 파이프 생성 */
-    if (pipe(pipe_fd) == -1) {
-        perror("pipe");
-        return -1;
-    }
+    int pipe_fd[MAX_CLIENTS][2]; /* 파이프 파일 디스크립터 배열 */
 
     /* 서버 소켓 생성 */
     if ((ssock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
@@ -47,22 +42,40 @@ int main(int argc, char **argv) {
     }
 
     clen = sizeof(cliaddr);
+    int client_count = 0;
     while (1) {
         /* 클라이언트가 접속하면 접속을 허용하고 클라이언트 소켓 생성 */
         int csock = accept(ssock, (struct sockaddr *)&cliaddr, &clen);
+
         if (csock < 0) {
             perror("accept()");
             continue;
         }
 
+        if (client_count >= MAX_CLIENTS) {
+            printf("Max clients reached. Connection rejected.\n");
+            close(csock);
+            continue;
+        }
+
+        /* 새로운 파이프 생성 */
+        if (pipe(pipe_fd[client_count]) == -1) {
+            perror("pipe");
+            return -1;
+        }
+
         if (fork() == 0) { // 자식 프로세스
-            close(pipe_fd[0]); // 읽기 디스크립터 닫기 (자식은 쓰기 전용)
+            close(pipe_fd[client_count][0]); // 읽기 디스크립터 닫기 (자식은 쓰기 전용)
+
+            close(ssock); // 자식 프로세스는 서버 소켓을 사용하지 않음
 
             /* 네트워크 주소를 문자열로 변경 */
             inet_ntop(AF_INET, &cliaddr.sin_addr, mesg, BUFSIZ);
             printf("Client is connected : %s\n", mesg);
             fflush(stdout); // 버퍼에 있는 데이터를 강제로 출력
+
             while (1) {
+                printf("child fd = %d\n", client_count);
                 int n = read(csock, mesg, BUFSIZ); // 클라이언트로부터 데이터 읽기
                 if (n <= 0) {
                     perror("read()");
@@ -72,8 +85,9 @@ int main(int argc, char **argv) {
                 mesg[n] = '\0';
                 printf("Received data : %s\n", mesg);
                 fflush(stdout); // 버퍼에 있는 데이터를 강제로 출력
+
                 /* 부모 프로세스에게 받은 메시지를 전달 */
-                write(pipe_fd[1], mesg, n);
+                write(pipe_fd[client_count][1], mesg, n);
 
                 if (strncmp(mesg, "...", 3) == 0) {
                     close(csock);
@@ -85,29 +99,40 @@ int main(int argc, char **argv) {
 //                    perror("write()");
             }
 
-            close(pipe_fd[1]); // 자식의 쓰기 디스크립터 닫기
+            close(pipe_fd[client_count][1]); // 자식의 쓰기 디스크립터 닫기
             exit(0);
         }
 
+        // 부모 프로세스
+        close(pipe_fd[client_count][1]); // 부모는 쓰기 디스크립터 닫기
+        printf("parent total: %d\n", client_count);
+        fflush(stdout);
         // 부모 프로세스는 읽기 디스크립터를 사용하여 자식의 데이터를 읽음
-        close(pipe_fd[1]); // 부모는 쓰기 디스크립터 닫기
-        while (1) {
-            int n = read(pipe_fd[0], mesg, BUFSIZ);
-            if (n > 0) {
-                mesg[n] = '\0';
-                printf("Parent received from child: %s\n", mesg); // 자식 프로세스의 메시지를 출력
-            } else if (n == 0) {
-                // 파이프가 닫혔다는 것은 자식 프로세스가 종료되었음을 의미
-                break;
-            } else {
-                perror("read()");
-                break;
+            for(int i =0; i<=client_count; i++){
+
+                int n = read(pipe_fd[i][0], mesg, BUFSIZ);
+                if (n > 0) {
+                    mesg[n] = '\0';
+                    printf("Parent received from child: %s\n", mesg); // 자식 프로세스의 메시지를 출력
+                } else if (n == 0) {
+                    // 파이프가 닫혔다는 것은 자식 프로세스가 종료되었음을 의미
+                    break;
+                } else {
+                    perror("read()");
+                    break;
+                }
+
             }
-        }
-        while (waitpid(-1, NULL, WNOHANG) > 0); // 좀비 프로세스 제거
+
+        // 좀비 프로세스 제거
+        while (waitpid(-1, NULL, WNOHANG) > 0);
+        client_count++;
     }
 
-    close(pipe_fd[0]); // 부모의 읽기 디스크립터 닫기
-    close(ssock);      // 서버 소켓을 닫음
+    for (int i = 0; i < client_count; i++) {
+        close(pipe_fd[i][0]);
+        close(pipe_fd[i][1]);
+    }
+    close(ssock); // 서버 소켓을 닫음
     return 0;
 }
