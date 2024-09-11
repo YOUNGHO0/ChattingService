@@ -165,6 +165,7 @@ void handle_sigchld(int sig) {
             printf("Closing socket: %d\n", client_csock[i]);
             close(client_csock[i]);
             client_csock[i] = -1; // ´İÈù ¼ÒÄÏÀ» -1·Î Ç¥½Ã
+            client_count--;
         }
     }
 }
