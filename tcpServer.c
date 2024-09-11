@@ -165,7 +165,7 @@ int main(int argc, char **argv) {
 
     clen = sizeof(cliaddr);
     int client_count = 0;
-
+    int  client_csock[MAX_USERS];
     while (1) {
         int csock = accept(ssock, (struct sockaddr *)&cliaddr, &clen);
 
@@ -175,7 +175,17 @@ int main(int argc, char **argv) {
                     userinfo user;
                     int n = read(pipe_fd[i][0], &user, sizeof(user));
                     if (n > 0) {
-                        printf("Parent received from child (User: %s): %s\n", user.userName, user.message);
+                        char formatted_message[BUFSIZ];
+                        snprintf(formatted_message, sizeof(formatted_message), "%s: %s", user.userName, user.message);
+//                        printf("Parent received from child (User: %s): %s\n", user.userName, user.message);
+                        for (int i = 0; i < client_count; i++) {
+                            if (client_csock[i] != user.csockId) { // Exclude the sender
+                                if (write(client_csock[i], formatted_message, strlen(formatted_message)) < 0) {
+                                    perror("broadcast write");
+                                }
+                            }
+                        }
+
                     }
                 }
                 continue;
@@ -223,7 +233,7 @@ int main(int argc, char **argv) {
             close(ssock);
             handleClient(csock, client_count, pipe_fd, cliaddr);
         }
-
+        client_csock[client_count] = csock;
         close(pipe_fd[client_count][1]); // 부모는 쓰기 디스크립터 닫기
         client_count++;
     }
