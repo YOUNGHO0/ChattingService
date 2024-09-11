@@ -13,7 +13,6 @@
 
 typedef struct userinfo{
     char * userName;
-    char * password;
     char * message;
     int csockId;
 };
