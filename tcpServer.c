@@ -38,7 +38,6 @@ int findUserIndex(char *userId, char *password) {
 
 void handleClient(int csock, int client_index, int pipe_fd[][2], struct sockaddr_in cliaddr) {
     userinfo user;
-    snprintf(user.userName, sizeof(user.userName), "%d%c", client_index + 1, 'a' + client_index);
     user.csockId = csock;
     close(pipe_fd[client_index][0]); // 자식은 읽기 디스크립터 닫기
 
@@ -92,6 +91,7 @@ void handleClient(int csock, int client_index, int pipe_fd[][2], struct sockaddr
         // 사용자 추가
         strcpy(users[user_count].userId, userId);
         strcpy(users[user_count].password, password);
+        strcpy(user.userName,userId);
         user_count++;
         write(csock, "회원가입 성공!\n", strlen("회원가입 성공!\n"));
     } else {
