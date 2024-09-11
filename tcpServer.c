@@ -11,6 +11,13 @@
 #define TCP_PORT 5100 /* 서버의 포트 번호 */
 #define MAX_CLIENTS 100 /* 최대 클라이언트 수 */
 
+typedef struct userinfo{
+    char * userName;
+    char * password;
+    char * message;
+    int csockId;
+};
+
 int main(int argc, char **argv) {
     int ssock;                 /* 소켓 디스크립터 정의 */
     socklen_t clen;
@@ -59,28 +66,15 @@ int main(int argc, char **argv) {
         /* 클라이언트가 접속하면 접속을 허용하고 클라이언트 소켓 생성 */
         int csock = accept(ssock, (struct sockaddr *)&cliaddr, &clen);
 
-        printf("접속됨:csock : %d : sscok : %d\n", csock,ssock);
         if (csock < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                printf("읽기 수행중 \n");
-                sleep(3);
                 // 부모 프로세스는 읽기 디스크립터를 사용하여 자식의 데이터를 읽음
-                for(int i =0; i<=client_count; i++){
-
+                for (int i = 0; i < client_count; i++) { // 수정된 부분
                     int n = read(pipe_fd[i][0], mesg, BUFSIZ);
                     if (n > 0) {
                         mesg[n] = '\0';
                         printf("Parent received from child: %s\n", mesg); // 자식 프로세스의 메시지를 출력
                     }
-
-//                    else if (n == 0) {
-//                        // 파이프가 닫혔다는 것은 자식 프로세스가 종료되었음을 의미
-//                        break;
-//                    } else {
-//                        perror("readddsss()");
-//                        break;
-//                    }
-
                 }
                 continue;
                 // 클라이언트 연결이 없을 경우, 다른 작업 수행
@@ -90,6 +84,20 @@ int main(int argc, char **argv) {
             }
         }
 
+        printf("client count %d\n",client_count);
+
+
+        flags = fcntl(csock, F_GETFL, 0);
+        if (flags < 0) {
+            perror("fcntl(F_GETFL)");
+            return -1;
+        }
+
+// O_NONBLOCK 플래그를 제거하여 블로킹 모드로 설정
+        if (fcntl(csock, F_SETFL, flags & ~O_NONBLOCK) < 0) {
+            perror("fcntl(F_SETFL)");
+            return -1;
+        }
 
 
         if (client_count >= MAX_CLIENTS) {
@@ -97,7 +105,7 @@ int main(int argc, char **argv) {
             close(csock);
             continue;
         }
-        printf("client Count : %d\n", client_count);
+
 
         /* 새로운 파이프 생성 */
         if (pipe(pipe_fd[client_count]) == -1) {
@@ -118,7 +126,7 @@ int main(int argc, char **argv) {
         if (fork() == 0) { // 자식 프로세스
             close(pipe_fd[client_count][0]); // 읽기 디스크립터 닫기 (자식은 쓰기 전용)
 
-//            close(ssock); // 자식 프로세스는 서버 소켓을 사용하지 않음
+            close(ssock); // 자식 프로세스는 서버 소켓을 사용하지 않음
 
             /* 네트워크 주소를 문자열로 변경 */
             inet_ntop(AF_INET, &cliaddr.sin_addr, mesg, BUFSIZ);
@@ -126,11 +134,13 @@ int main(int argc, char **argv) {
             fflush(stdout); // 버퍼에 있는 데이터를 강제로 출력
 
             while (1) {
-//                printf("child fd = %d\n", client_count);
-//                printf("read 수행 전\n");
                 int n = read(csock, mesg, BUFSIZ); // 클라이언트로부터 데이터 읽기
-                if (n <= 0) {
-                    continue;
+                if (n == 0) {
+                    // 클라이언트가 연결을 종료함
+                    printf("Client disconnected.\n");
+                    break;
+                } else if (n < 0) {
+                    // 실제 오류 발생
                     perror("read issue()");
                     break;
                 }
@@ -158,9 +168,6 @@ int main(int argc, char **argv) {
 
         // 부모 프로세스
         close(pipe_fd[client_count][1]); // 부모는 쓰기 디스크립터 닫기
-        printf("parent total: %d\n", client_count);
-        fflush(stdout);
-
         client_count++;
 
         // 좀비 프로세스 제거
