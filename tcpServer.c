@@ -9,6 +9,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <signal.h>
+#include <sys/mman.h>
 
 #define TCP_PORT 5100 /* 서버의 포트 번호 */
 #define MAX_CLIENTS 100 /* 최대 클라이언트 수 */
@@ -30,6 +31,34 @@ userLoginInfo users[MAX_USERS]; // 사용자 정보를 저장할 배열
 int user_count = 0; // 현재 등록된 사용자 수
 int client_count = 0;
 int  client_csock[MAX_USERS];
+
+void loadUsersFromFile() {
+    FILE *file = fopen("data.txt", "r");
+    if (file == NULL) {
+        perror("fopen");
+        return;
+    }
+
+    while (fscanf(file, "%19s %19s", users[user_count].userId, users[user_count].password) == 2) {
+        user_count++;
+    }
+
+    fclose(file);
+}
+
+void saveUsersToFile() {
+    FILE *file = fopen( "data.txt", "w");
+    if (file == NULL) {
+        perror("fopen");
+        return;
+    }
+
+    for (int i = 0; i < user_count; i++) {
+        fprintf(file, "%s %s\n", users[i].userId, users[i].password);
+    }
+
+    fclose(file);
+}
 
 
 void setFdFlagAndListen(int ssock);
@@ -106,11 +135,13 @@ void handleUserLogin(int csock, userinfo *user) {// 로그인 또는 회원가입 여부 물
         password[strcspn(password, "\n")] = '\0'; // 줄바꿈 제거
 
         int userIndex = findUserIndex(userId, password);
+
         if (userIndex != -1) {
             write(csock, "로그인 성공!\n", strlen("로그인 성공!\n"));
         } else {
             write(csock, "로그인 실패! 잘못된 아이디 또는 비밀번호입니다.\n", strlen("로그인 실패! 잘못된 아이디 또는 비밀번호입니다.\n"));
             close(csock);
+            printf("소켓 닫기 : %d\n", csock);
             exit(0);
         }
     } else if (strcmp(choice, "signup") == 0) {
@@ -135,6 +166,7 @@ void handleUserLogin(int csock, userinfo *user) {// 로그인 또는 회원가입 여부 물
         strcpy(users[user_count].password, password);
         strcpy((*user).userName, userId);
         user_count++;
+        printf("usercount : %d/n",user_count);
         write(csock, "회원가입 성공!\n", strlen("회원가입 성공!\n"));
     } else {
         write(csock, "잘못된 선택입니다. 연결을 종료합니다.\n", strlen("잘못된 선택입니다. 연결을 종료합니다.\n"));
