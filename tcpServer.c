@@ -27,6 +27,13 @@ typedef struct userLoginInfo {
 userLoginInfo users[MAX_USERS]; // 사용자 정보를 저장할 배열
 int user_count = 0; // 현재 등록된 사용자 수
 
+void setFdFlagAndListen(int ssock);
+
+void broadcastToClients(int client_count, const int *client_csock, userinfo *user);
+
+void setCsockFlag(int flags, int csock);
+void setPipeWithNonblock( int pipe_fd[][2], int client_count);
+
 int findUserIndex(char *userId, char *password) {
     for (int i = 0; i < user_count; i++) {
         if (strcmp(users[i].userId, userId) == 0 && strcmp(users[i].password, password) == 0) {
@@ -148,20 +155,10 @@ int main(int argc, char **argv) {
         return -1;
     }
 
-    int flags = fcntl(ssock, F_GETFL, 0);
-    if (flags < 0) {
-        perror("fcntl(F_GETFL)");
-        return -1;
-    }
-    if (fcntl(ssock, F_SETFL, flags | O_NONBLOCK) < 0) {
-        perror("fcntl(F_SETFL)");
-        return -1;
-    }
+    int flags;
 
-    if (listen(ssock, 8) < 0) {
-        perror("listen()");
-        return -1;
-    }
+
+    setFdFlagAndListen(ssock);
 
     clen = sizeof(cliaddr);
     int client_count = 0;
@@ -175,17 +172,7 @@ int main(int argc, char **argv) {
                     userinfo user;
                     int n = read(pipe_fd[i][0], &user, sizeof(user));
                     if (n > 0) {
-                        char formatted_message[BUFSIZ];
-                        snprintf(formatted_message, sizeof(formatted_message), "%s: %s", user.userName, user.message);
-//                        printf("Parent received from child (User: %s): %s\n", user.userName, user.message);
-                        for (int i = 0; i < client_count; i++) {
-                            if (client_csock[i] != user.csockId) { // Exclude the sender
-                                if (write(client_csock[i], formatted_message, strlen(formatted_message)) < 0) {
-                                    perror("broadcast write");
-                                }
-                            }
-                        }
-
+                        broadcastToClients(client_count, client_csock, &user);
                     }
                 }
                 continue;
@@ -198,15 +185,7 @@ int main(int argc, char **argv) {
         printf("client count %d\n", client_count);
 
         flags = fcntl(csock, F_GETFL, 0);
-        if (flags < 0) {
-            perror("fcntl(F_GETFL)");
-            return -1;
-        }
-
-        if (fcntl(csock, F_SETFL, flags & ~O_NONBLOCK) < 0) {
-            perror("fcntl(F_SETFL)");
-            return -1;
-        }
+        setCsockFlag(flags, csock);
 
         if (client_count >= MAX_CLIENTS) {
             printf("Max clients reached. Connection rejected.\n");
@@ -214,20 +193,7 @@ int main(int argc, char **argv) {
             continue;
         }
 
-        if (pipe(pipe_fd[client_count]) == -1) {
-            perror("pipe");
-            return -1;
-        }
-
-        flags = fcntl(pipe_fd[client_count][0], F_GETFL, 0);
-        if (flags == -1) {
-            perror("fcntl F_GETFL");
-            exit(EXIT_FAILURE);
-        }
-        if (fcntl(pipe_fd[client_count][0], F_SETFL, flags | O_NONBLOCK) == -1) {
-            perror("fcntl F_SETFL");
-            exit(EXIT_FAILURE);
-        }
+        setPipeWithNonblock(pipe_fd, client_count);
 
         if (fork() == 0) { // 자식 프로세스
             close(ssock);
@@ -244,4 +210,55 @@ int main(int argc, char **argv) {
     }
     close(ssock);
     return 0;
+}
+
+void setPipeWithNonblock( int pipe_fd[][2], int client_count) {
+    if (pipe(pipe_fd[client_count]) == -1) {
+        perror("pipe");
+    }
+    int flags = fcntl((pipe_fd)[client_count][0], F_GETFL, 0);
+    if (flags == -1) {
+        perror("fcntl F_GETFL");
+        exit(EXIT_FAILURE);
+    }
+    if (fcntl(pipe_fd[client_count][0], F_SETFL, flags | O_NONBLOCK) == -1) {
+        perror("fcntl F_SETFL");
+        exit(EXIT_FAILURE);
+    }
+}
+
+void setCsockFlag(int flags, int csock) {
+    if (flags < 0) {
+        perror("fcntl(F_GETFL)");
+    }
+    if (fcntl(csock, F_SETFL, flags & ~O_NONBLOCK) < 0) {
+        perror("fcntl(F_SETFL)");
+    }
+}
+
+void broadcastToClients(int client_count, const int *client_csock, userinfo *user) {
+    char formatted_message[BUFSIZ];
+    snprintf(formatted_message, sizeof(formatted_message), "%s: %s", (*user).userName, (*user).message);
+//                        printf("Parent received from child (User: %s): %s\n", user.userName, user.message);
+    for (int i = 0; i < client_count; i++) {
+        if (client_csock[i] != (*user).csockId) { // Exclude the sender
+            if (write(client_csock[i], formatted_message, strlen(formatted_message)) < 0) {
+                perror("broadcast write");
+            }
+        }
+    }
+}
+
+void setFdFlagAndListen(int ssock) {
+    int flags = fcntl(ssock, F_GETFL, 0);
+    if (flags < 0) {
+        perror("fcntl(F_GETFL)");
+    }
+    if (fcntl(ssock, F_SETFL, flags | O_NONBLOCK) < 0) {
+        perror("fcntl(F_SETFL)");
+    }
+
+    if (listen(ssock, 8) < 0) {
+        perror("listen()");
+    }
 }
