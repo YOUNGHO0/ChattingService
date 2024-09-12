@@ -244,7 +244,7 @@ int main(int argc, char **argv) {
     int ssock;
     socklen_t clen;
     struct sockaddr_in servaddr, cliaddr;
-
+    int opt = 1;
 
 
     setSignalHandler();
@@ -253,6 +253,12 @@ int main(int argc, char **argv) {
         perror("socket()");
         return -1;
     }
+    if (setsockopt(ssock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+        perror("setsockopt(SO_REUSEADDR)");
+        close(ssock);
+        return -1;
+    }
+
     memset(&servaddr, 0, sizeof(servaddr));
     servaddr.sin_family = AF_INET;
     servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
