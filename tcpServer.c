@@ -84,6 +84,8 @@ void handleUserLogin(int csock, userinfo *user);
 
 void setSignalHandler();
 
+void broadCast(int client_count, const int *client_csock, const userinfo *user, const char *formatted_message);
+
 int findUserIndex(char *userId, char *password) {
     for (int i = 0; i < user_count; i++) {
         if (strcmp(users[i].userId, userId) == 0 && strcmp(users[i].password, password) == 0) {
@@ -100,6 +102,45 @@ void handleClient(int csock, int client_index, int pipe_fd[][2], struct sockaddr
     setNetworkConnection(&cliaddr, &user);
 
     handleUserLogin(csock, &user);
+
+    FILE *file = fopen("chatRoom.txt", "r");
+    if (file == NULL) {
+        perror("fopen");
+        return;
+    }
+
+    char result[2000];
+    char chatRoom[2000];
+    while (fscanf(file, "%19s ", chatRoom ) == 1) {
+        strcat(result, chatRoom);
+        strcat(result, " ");
+    }
+    strcat(result,"\n");
+    fclose(file);
+
+    write(csock, result, strlen(result));
+    char chatRoomNumber[2000];
+    int room =read(csock, chatRoomNumber, sizeof(chatRoomNumber));//
+    if (room < 0) {
+        perror("read");
+        return;
+    }
+
+    // Null 종료 문자 추가
+    chatRoomNumber[room] = '\0';
+
+    strcpy(user.message,chatRoomNumber);
+    if (strncmp(chatRoomNumber, "create:", 7) == 0) {
+        write(pipe_fd[client_index][1], &user, sizeof(user));
+    } else {
+        char select[2000];  // 충분히 큰 버퍼를 준비
+
+        // "select:"와 원래 문자열을 결합
+        snprintf(select, sizeof(select), "select:%s", chatRoomNumber);
+        strcpy(user.message,select);
+        write(pipe_fd[client_index][1], &user, sizeof(user));
+    }
+
 
     while (1) {
         int n = read(csock, user.message, BUFSIZ); // 클라이언트로부터 데이터 읽기
@@ -359,7 +400,21 @@ void setCsockFlag(int flags, int csock) {
 void broadcastToClients(int client_count, const int *client_csock, userinfo *user) {
     char formatted_message[BUFSIZ];
     snprintf(formatted_message, sizeof(formatted_message), "%s: %s", (*user).userName, (*user).message);
-//                        printf("Parent received from child (User: %s): %s\n", user.userName, user.message);
+
+
+    printf("Parent received from child (User: %s): %s\n", user->userName, user->message);
+    if (strncmp(user->message, "create:", 7) == 0){
+
+    }
+    else if(strncmp(user->message, "select:", 7) == 0) {
+        int number = atoi(user->message + 7);
+        printf("select room number is %d\n",number);
+        return;
+    }
+    broadCast(client_count, client_csock, user, formatted_message);
+}
+
+void broadCast(int client_count, const int *client_csock, const userinfo *user, const char *formatted_message) {
     for (int i = 0; i < client_count; i++) {
         printf("client count : %d\n", client_count);
         if (client_csock[i] != (*user).csockId) { // Exclude the sender
