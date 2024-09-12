@@ -176,6 +176,7 @@ void handleSearchCommand(const int *to_child, ssize_t bytes_read) {
     char res[BUFFER_SIZE];
     bytes_read = read(to_child[0], res, sizeof(res));
     if (bytes_read > 0) {
+        printf("서치 작동 \n");
         res[bytes_read] = '\0';
         if (strncmp(res, "search:", 7) == 0) {
             char *keyword = res + 7;
@@ -189,17 +190,29 @@ void handleSearchCommand(const int *to_child, ssize_t bytes_read) {
     }
 }
 
+
+// 서버로부터 메시지 수신 및 저장하는 함수
 void receveMessageFromServer(int ssock, char *mesg) {
-    ssize_t bytes_read = read(ssock, mesg,BUFSIZ);
+    ssize_t bytes_read = read(ssock, mesg, BUFFER_SIZE - 1);
     if (bytes_read > 0) {
-        mesg[bytes_read] = '\0';
+        mesg[bytes_read] = '\0'; // 받은 메시지를 null로 종료
+
+        // 부모 프로세스에서 수신된 메시지 저장
+        if (getLoggable()) {
+            strncpy(parent_messages[parent_msg_count++], mesg, BUFFER_SIZE);
+        }
+        // 메시지 출력
         printf("%s\n", mesg);
     } else if (bytes_read < 0) {
+        // 읽기 오류 처리
         if (errno != EAGAIN && errno != EWOULDBLOCK) {
             print_error("read() from socket");
         }
     }
 }
+
+
+
 
 int setSocketPipeToNoneblock(int ssock) {
     int flags = fcntl(ssock, F_GETFL, 0);
@@ -252,17 +265,76 @@ void print_error(const char *msg) {
     fprintf(stderr, "%s: %s\n", msg, strerror(errno));
 }
 
-void print_matching_messages(const char *keyword, int is_parent) {
-    int count = is_parent ? parent_msg_count : child_msg_count;
-    char (*messages)[BUFFER_SIZE] = is_parent ? parent_messages : child_messages;
+// KMP 알고리즘의 LPS 배열 계산 함수
+void compute_lps(const char *pattern, int m, int *lps) {
+    int length = 0;
+    lps[0] = 0; // 첫 번째 LPS 값은 0
+    int i = 1;
 
-    for (int i = 0; i < count; ++i) {
-        if (strstr(messages[i], keyword)) {
-            printf("%s", messages[i]);
+    // 패턴에 대해 LPS 배열 계산
+    while (i < m) {
+        if (pattern[i] == pattern[length]) {
+            length++;
+            lps[i] = length;
+            i++;
+        } else {
+            if (length != 0) {
+                length = lps[length - 1];
+            } else {
+                lps[i] = 0;
+                i++;
+            }
         }
     }
 }
 
+// KMP 알고리즘으로 문자열 검색
+int KMP_search(const char *text, const char *pattern) {
+    int n = strlen(text);
+    int m = strlen(pattern);
+    int lps[m];
+
+    // 패턴에 대한 LPS 배열 계산
+    compute_lps(pattern, m, lps);
+
+    int i = 0; // 텍스트의 인덱스
+    int j = 0; // 패턴의 인덱스
+
+    // 텍스트에서 패턴을 검색
+    while (i < n) {
+        if (pattern[j] == text[i]) {
+            i++;
+            j++;
+        }
+
+        // 패턴이 텍스트 내에서 완전히 일치한 경우
+        if (j == m) {
+            return 1; // 매칭 발견
+            j = lps[j - 1];
+        } else if (i < n && pattern[j] != text[i]) {
+            // 패턴이 일치하지 않는 경우
+            if (j != 0) {
+                j = lps[j - 1];
+            } else {
+                i++;
+            }
+        }
+    }
+    return 0; // 매칭 발견되지 않음
+}
+
+// KMP 알고리즘을 사용하는 메시지 검색 함수
+void print_matching_messages(const char *keyword, int is_parent) {
+    int count = is_parent ? parent_msg_count : child_msg_count;
+    char (*messages)[BUFFER_SIZE] = is_parent ? parent_messages : child_messages;
+
+    printf("검색어 '%s'를 포함하는 메시지:\n", keyword);
+    for (int i = 0; i < count; ++i) {
+        if (KMP_search(messages[i], keyword)) {
+            printf("%s", messages[i]);
+        }
+    }
+}
 struct sockaddr_in setNetwork(char *const *argv, struct sockaddr_in *servaddr) {
     memset(servaddr, 0, sizeof(*servaddr));
     (*servaddr).sin_family = AF_INET;
