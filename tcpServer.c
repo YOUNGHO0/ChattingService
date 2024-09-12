@@ -198,6 +198,7 @@ void broadcastToClients(int client_count, int client_pos, userinfo *user) {
     printf("Parent received from child (User: %s): %s\n", user->userName, user->message);
     if (strncmp(user->message, "create:", 7) == 0){
 
+        printf("start write\n");
         FILE *file = fopen("chatRoom.txt", "a");
         if (file == NULL) {
             perror("fopen");
@@ -223,6 +224,7 @@ void broadcastToClients(int client_count, int client_pos, userinfo *user) {
         }
         // 파일 닫기
         fclose(file);
+        printf("finish write\n");
 
     }
     else if(strncmp(user->message, "select:", 7) == 0) {
@@ -284,7 +286,6 @@ void handle_sigchld(int sig) {
                 client_csock_info[i].roomNumber = client_csock_info[client_count-1].roomNumber;
                 pipe_fd[i][0] = pipe_fd[client_count-1][0];
 
-                //pid 인포도 바꿔줘야되네
 
 
                 client_count--; // 클라이언트 수 감소
@@ -408,24 +409,30 @@ void handleClient(int csock, int client_index, int (*pipe_fd)[2], struct sockadd
     chatRoomNumber[room] = '\0';
 
     strcpy(user.message,chatRoomNumber);
+    write(pipe_fd[client_index][1], &user, sizeof(user));
+
+
+
     if (strncmp(chatRoomNumber, "create:", 7) == 0) {
 
         int count = 0;
-
+        printf("start\n");
         FILE *file = fopen("chatRoom.txt", "r");
         if (file == NULL) {
             perror("fopen");
             return;
         }
+        printf("start1\n");
 
         char chatRoom[2000];
         while (fscanf(file, "%19s ", chatRoom ) == 1) {
             count++;
         }
+        printf("start2\n");
 
         fclose(file);
-
-        write(pipe_fd[client_index][1], &user, sizeof(user));
+        sleep(1);
+        printf("start4\n");
         int updated_room_count;
         do{
             updated_room_count =0;
@@ -440,12 +447,13 @@ void handleClient(int csock, int client_index, int (*pipe_fd)[2], struct sockadd
                 updated_room_count++;
             }
             fclose(file);
+            printf("start5\n");
         }while(updated_room_count <= count);
 
-        printf("updsated room_number : %d",updated_room_count);
+        printf("updsated room_number : %d\n",updated_room_count);
 
         user.room_number=updated_room_count-1;
-
+        printf("start6\n");
         write(csock, "Updated Room List\n", strlen("Updated Room List\n"));
 
         file = fopen("chatRoom.txt", "r");
@@ -453,7 +461,7 @@ void handleClient(int csock, int client_index, int (*pipe_fd)[2], struct sockadd
             perror("fopen");
             return;
         }
-
+        printf("start7\n");
         while (fscanf(file, "%19s ", chatRoom ) == 1) {
             strcat(result, chatRoom);
             strcat(result, " ");
@@ -463,7 +471,7 @@ void handleClient(int csock, int client_index, int (*pipe_fd)[2], struct sockadd
 
 
         write(csock, result, strlen(result));
-        fclose(file);
+
         result[0] = '\0';
         char select[2000];  // 충분히 큰 버퍼를 준비
         // "select:"와 원래 문자열을 결합
