@@ -80,6 +80,13 @@ int main(int argc, char **argv) {
     struct sockaddr_in servaddr, cliaddr;
     int opt = 1;
 
+    FILE * file = fopen("chatRoom.txt", "w");
+    if (file == NULL) {
+        perror("Error creating file");
+        return 1;
+    }
+    // 빈 파일을 생성하고 나서 파일을 닫습니다
+    fclose(file);
 
     setSignalHandler();
 
