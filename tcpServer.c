@@ -19,6 +19,7 @@ typedef struct userinfo {
     char userName[10];
     char message[BUFSIZ];
     int csockId;
+    int room_number;
 } userinfo;
 
 // 로그인 정보를 저장하는 구조체
@@ -39,8 +40,17 @@ ProcessInfo process_info[1000];
 userLoginInfo users[MAX_USERS]; // 사용자 정보를 저장할 배열
 int user_count = 0; // 현재 등록된 사용자 수
 int client_count = 0;
-int  client_csock[MAX_USERS];
+//int  client_csock[MAX_USERS];
+
+
 int pipe_fd[MAX_CLIENTS][2];
+
+struct csock_info{
+    int csock;
+    int roomNumber;
+};
+
+struct csock_info client_csock_info[200];
 
 void loadUsersFromFile() {
     FILE *file = fopen("data.txt", "r");
@@ -73,7 +83,7 @@ void saveUsersToFile() {
 
 void setFdFlagAndListen(int ssock);
 
-void broadcastToClients(int client_count, const int *client_csock, userinfo *user);
+void broadcastToClients(int client_count, const int client_pos, userinfo *user);
 
 void setCsockFlag(int flags, int csock);
 void setPipeWithNonblock( int pipe_fd[][2], int client_count);
@@ -84,7 +94,7 @@ void handleUserLogin(int csock, userinfo *user);
 
 void setSignalHandler();
 
-void broadCast(int client_count, const int *client_csock, const userinfo *user, const char *formatted_message);
+void broadCast(int client_count, const userinfo *user, const char *formatted_message);
 
 int findUserIndex(char *userId, char *password) {
     for (int i = 0; i < user_count; i++) {
@@ -119,6 +129,9 @@ void handleClient(int csock, int client_index, int pipe_fd[][2], struct sockaddr
     fclose(file);
 
     write(csock, result, strlen(result));
+
+    result[0] = '\0';
+
     char chatRoomNumber[2000];
     int room =read(csock, chatRoomNumber, sizeof(chatRoomNumber));//
     if (room < 0) {
@@ -131,10 +144,72 @@ void handleClient(int csock, int client_index, int pipe_fd[][2], struct sockaddr
 
     strcpy(user.message,chatRoomNumber);
     if (strncmp(chatRoomNumber, "create:", 7) == 0) {
+
+        int count = 0;
+
+        FILE *file = fopen("chatRoom.txt", "r");
+        if (file == NULL) {
+            perror("fopen");
+            return;
+        }
+
+        char chatRoom[2000];
+        while (fscanf(file, "%19s ", chatRoom ) == 1) {
+            count++;
+        }
+
+        fclose(file);
+
         write(pipe_fd[client_index][1], &user, sizeof(user));
+        int updated_room_count;
+        do{
+           updated_room_count =0;
+
+            FILE *file = fopen("chatRoom.txt", "r");
+            if (file == NULL) {
+                perror("fopen");
+                return;
+            }
+            char chatRoom[2000];
+            while (fscanf(file, "%19s ", chatRoom ) == 1) {
+                updated_room_count++;
+            }
+            fclose(file);
+        }while(updated_room_count <= count);
+
+        printf("updsated room_number : %d",updated_room_count);
+
+        user.room_number=updated_room_count-1;
+
+        write(csock, "Updated Room List\n", strlen("Updated Room List\n"));
+
+        file = fopen("chatRoom.txt", "r");
+        if (file == NULL) {
+            perror("fopen");
+            return;
+        }
+
+        while (fscanf(file, "%19s ", chatRoom ) == 1) {
+            strcat(result, chatRoom);
+            strcat(result, " ");
+        }
+        strcat(result,"\n");
+        fclose(file);
+
+
+        write(csock, result, strlen(result));
+        fclose(file);
+        result[0] = '/0';
+        char select[2000];  // 충분히 큰 버퍼를 준비
+        // "select:"와 원래 문자열을 결합
+        snprintf(select, sizeof(select), "select:%d",user.room_number );
+        strcpy(user.message,select);
+        write(pipe_fd[client_index][1], &user, sizeof(user));
+
     } else {
         char select[2000];  // 충분히 큰 버퍼를 준비
-
+        int num =atoi(chatRoomNumber);
+        user.room_number = num;
         // "select:"와 원래 문자열을 결합
         snprintf(select, sizeof(select), "select:%s", chatRoomNumber);
         strcpy(user.message,select);
@@ -234,7 +309,7 @@ void handleUserLogin(int csock, userinfo *user) {
     } else {
         write(csock, "WRONG OPTION QUIT CONNECTION \n", strlen("WRONG OPTION QUIT CONNECTION \n"));
         for(int k =0; k< client_count; k++){
-            printf("socket pos : %d  number  :%d\n", k,client_csock[k]);
+            printf("socket pos : %d  number  :%d\n", k,client_csock_info[k].csock);
         }
         close(csock);
         exit(0);
@@ -267,7 +342,8 @@ void handle_sigchld(int sig) {
                 process_info[i].csock = process_info[client_count-1].csock; // 닫힌 소켓을 -1로 표시
 
                 // 클라이언트 소켓 배열에서 소켓 제거
-                client_csock[i] = client_csock[client_count - 1]; // 마지막 소켓으로 교체
+                client_csock_info[i].csock = client_csock_info[client_count - 1].csock; // 마지막 소켓으로 교체
+                client_csock_info[i].roomNumber = client_csock_info[client_count-1].roomNumber;
                 pipe_fd[i][0] = pipe_fd[client_count-1][0];
 
                 //pid 인포도 바꿔줘야되네
@@ -323,7 +399,7 @@ int main(int argc, char **argv) {
                     userinfo user;
                     int n = read(pipe_fd[i][0], &user, sizeof(user));
                     if (n > 0) {
-                        broadcastToClients(client_count, client_csock, &user);
+                        broadcastToClients(client_count, i, &user);
                     }
                 }
                 continue;
@@ -333,7 +409,7 @@ int main(int argc, char **argv) {
         }
 
         for(int k =0; k< client_count; k++){
-            printf("socket %d pos val : %d\n", k,client_csock[k]);
+            printf("socket %d pos val : %d\n", k,client_csock_info[k].csock);
         }
         int flags = fcntl(csock, F_GETFL, 0);
         setCsockFlag(flags, csock);
@@ -352,7 +428,7 @@ int main(int argc, char **argv) {
         }
         process_info[client_count].pid = pid;
         process_info[client_count].csock = csock;
-        client_csock[client_count] = csock;
+        client_csock_info[client_count].csock = csock;
         close(pipe_fd[client_count][1]); // 부모는 쓰기 디스크립터 닫기
         client_count++;
     }
@@ -397,7 +473,7 @@ void setCsockFlag(int flags, int csock) {
     }
 }
 
-void broadcastToClients(int client_count, const int *client_csock, userinfo *user) {
+void broadcastToClients(int client_count, int client_pos, userinfo *user) {
     char formatted_message[BUFSIZ];
     snprintf(formatted_message, sizeof(formatted_message), "%s: %s", (*user).userName, (*user).message);
 
@@ -405,21 +481,61 @@ void broadcastToClients(int client_count, const int *client_csock, userinfo *use
     printf("Parent received from child (User: %s): %s\n", user->userName, user->message);
     if (strncmp(user->message, "create:", 7) == 0){
 
+        FILE *file = fopen("chatRoom.txt", "a");
+        if (file == NULL) {
+            perror("fopen");
+            return;
+        }
+
+        // 파일 디스크립터 가져오기
+        int fd = fileno(file);
+
+        // 파일에 락을 걸기
+        if (flock(fd, LOCK_EX) < 0) {
+            perror("flock");
+            fclose(file);
+            return;
+        }
+
+        // 파일에 문자열 쓰기
+        if (fprintf(file, "%s ", (user->message+7)) < 0) {
+            perror("fprintf");
+        }
+
+        // fflush를 사용해 버퍼 비우기 (디스크에 즉시 반영)
+        if (fflush(file) != 0) {
+            perror("fflush");
+        }
+
+        // fsync를 사용해 디스크에 강제로 반영
+        if (fsync(fd) < 0) {
+            perror("fsync");
+        }
+        // 락 해제
+        if (flock(fd, LOCK_UN) < 0) {
+            perror("flock");
+        }
+        // 파일 닫기
+        fclose(file);
+
     }
     else if(strncmp(user->message, "select:", 7) == 0) {
         int number = atoi(user->message + 7);
+        client_csock_info[client_pos].roomNumber = number;
         printf("select room number is %d\n",number);
         return;
     }
-    broadCast(client_count, client_csock, user, formatted_message);
+    broadCast(client_count, user, formatted_message);
 }
 
-void broadCast(int client_count, const int *client_csock, const userinfo *user, const char *formatted_message) {
+void broadCast(int client_count, const userinfo *user, const char *formatted_message) {
     for (int i = 0; i < client_count; i++) {
-        printf("client count : %d\n", client_count);
-        if (client_csock[i] != (*user).csockId) { // Exclude the sender
-            printf("socket to write : %d\n",client_csock[i]);
-            if (write(client_csock[i], formatted_message, strlen(formatted_message)) < 0) {
+        printf("user RoomNumber %d\n", user->room_number );
+        printf("%d csock : %d\n", i,client_csock_info[i].csock);
+        printf("%d roomNumber : %d\n",i, client_csock_info[i].roomNumber );
+        if (client_csock_info[i].csock != (*user).csockId && client_csock_info[i].roomNumber == user->room_number) { // Exclude the sender
+            printf("socket to write : %d\n",client_csock_info[i].csock);
+            if (write(client_csock_info[i].csock, formatted_message, strlen(formatted_message)) < 0) {
                 perror("broadcast write");
             }
         }
