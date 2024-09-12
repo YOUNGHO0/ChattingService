@@ -386,7 +386,7 @@ void handleClient(int csock, int client_index, int (*pipe_fd)[2], struct sockadd
     }
 
     char result[2000];
-    char chatRoom[2000];
+    char chatRoom[2000] = {'\0'};
     while (fscanf(file, "%19s ", chatRoom ) == 1) {
         strcat(result, chatRoom);
         strcat(result, " ");
