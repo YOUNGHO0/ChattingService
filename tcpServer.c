@@ -114,7 +114,7 @@ void handleClient(int csock, int client_index, int pipe_fd[][2], struct sockaddr
         user.message[n] = '\0';
 
         if (strncmp(user.message, "...", 3) == 0) {
-            printf("종료합니다\n");
+            printf("exit client thread\n");
             close(pipe_fd[client_index][1]); // 자식의 쓰기 디스크립터 닫기
             close(csock);
             exit(0);
@@ -133,43 +133,43 @@ void handleClient(int csock, int client_index, int pipe_fd[][2], struct sockaddr
 
 void handleUserLogin(int csock, userinfo *user) {
     char choice[10];
-    write(csock, "로그인 또는 회원가입을 선택하세요 (login/signup): ", strlen("로그인 또는 회원가입을 선택하세요 (login/signup): "));
+    write(csock, "input type (login/signup): ", strlen("input type (login/signup):"));
     read(csock, choice, sizeof(choice));
     choice[strcspn(choice, "\n")] = '\0'; // 줄바꿈 제거
 
     if (strcmp(choice, "login") == 0) {
         char userId[20], password[20];
-        write(csock, "아이디: ", strlen("아이디: "));
+        write(csock, "ID: ", strlen("ID: "));
         read(csock, userId, sizeof(userId));
         userId[strcspn(userId, "\n")] = '\0'; // 줄바꿈 제거
 
-        write(csock, "비밀번호: ", strlen("비밀번호: "));
+        write(csock, "PW: ", strlen("PW: "));
         read(csock, password, sizeof(password));
         password[strcspn(password, "\n")] = '\0'; // 줄바꿈 제거
 
         loadUsersFromFile();
         int userIndex = findUserIndex(userId, password);
         if (userIndex != -1) {
-            write(csock, "로그인 성공!\n", strlen("로그인 성공!\n"));
+            write(csock, "SUCCESS LOGIN\n", strlen("SUCCESS LOGIN\n"));
             strcpy(user->userName, userId); // 유저 이름 저장
         } else {
-            write(csock, "로그인 실패! 잘못된 아이디 또는 비밀번호입니다.\n", strlen("로그인 실패! 잘못된 아이디 또는 비밀번호입니다.\n"));
+            write(csock, "INCORRECT UserName PassWord\n", strlen("INCORRECT UserName PassWord\n"));
             close(csock);
             exit(0);
         }
     } else if (strcmp(choice, "signup") == 0) {
         if (user_count >= MAX_USERS) {
-            write(csock, "최대 사용자 수에 도달했습니다. 회원가입이 불가능합니다.\n", strlen("최대 사용자 수에 도달했습니다. 회원가입이 불가능합니다.\n"));
+            write(csock, "MAX User \n", strlen("MAX User \n"));
             close(csock);
             exit(0);
         }
 
         char userId[20], password[20];
-        write(csock, "새 아이디: ", strlen("새 아이디: "));
+        write(csock, "ID: ", strlen("ID: "));
         read(csock, userId, sizeof(userId));
         userId[strcspn(userId, "\n")] = '\0'; // 줄바꿈 제거
 
-        write(csock, "새 비밀번호: ", strlen("새 비밀번호: "));
+        write(csock, "PW: ", strlen("PW: "));
         read(csock, password, sizeof(password));
         password[strcspn(password, "\n")] = '\0'; // 줄바꿈 제거
 
@@ -177,7 +177,7 @@ void handleUserLogin(int csock, userinfo *user) {
         // 중복 확인
         for (int i = 0; i < user_count; i++) {
             if (strcmp(users[i].userId, userId) == 0) {
-                write(csock, "이미 존재하는 아이디입니다. 다른 아이디를 사용해주세요.\n", strlen("이미 존재하는 아이디입니다. 다른 아이디를 사용해주세요.\n"));
+                write(csock, "ID ALREADY EXIST.\n", strlen("ID ALREADY EXIST.\n"));
                 close(csock);
                 exit(0);
             }
@@ -189,11 +189,11 @@ void handleUserLogin(int csock, userinfo *user) {
         user_count++;
         saveUsersToFile();
         strcpy(user->userName, userId);
-        write(csock, "회원가입 성공!\n", strlen("회원가입 성공!\n"));
+        write(csock, "SUCCESS\n", strlen("SUCCESS\n"));
     } else {
-        write(csock, "잘못된 선택입니다. 연결을 종료합니다.\n", strlen("잘못된 선택입니다. 연결을 종료합니다.\n"));
+        write(csock, "WRONG OPTION QUIT CONNECTION \n", strlen("WRONG OPTION QUIT CONNECTION \n"));
         for(int k =0; k< client_count; k++){
-            printf("소켓 %d 번째  %d\n", k,client_csock[k]);
+            printf("socket pos : %d  number  :%d\n", k,client_csock[k]);
         }
         close(csock);
         exit(0);
@@ -221,7 +221,7 @@ void handle_sigchld(int sig) {
 
                 int csock = process_info[i].csock;
                 close(csock);
-                printf("pid처리 완료 %d %d\n", pid, csock );
+                printf("pid handling finished %d %d\n", pid, csock );
                 process_info[i].pid = process_info[client_count-1].pid;
                 process_info[i].csock = process_info[client_count-1].csock; // 닫힌 소켓을 -1로 표시
 
@@ -286,7 +286,7 @@ int main(int argc, char **argv) {
         }
 
         for(int k =0; k< client_count; k++){
-            printf("소켓 %d 번째  %d\n", k,client_csock[k]);
+            printf("socket %d pos val : %d\n", k,client_csock[k]);
         }
         int flags = fcntl(csock, F_GETFL, 0);
         setCsockFlag(flags, csock);
@@ -355,9 +355,9 @@ void broadcastToClients(int client_count, const int *client_csock, userinfo *use
     snprintf(formatted_message, sizeof(formatted_message), "%s: %s", (*user).userName, (*user).message);
 //                        printf("Parent received from child (User: %s): %s\n", user.userName, user.message);
     for (int i = 0; i < client_count; i++) {
-        printf("클라이언트 갯수 %d\n", client_count);
+        printf("client count : %d\n", client_count);
         if (client_csock[i] != (*user).csockId) { // Exclude the sender
-            printf("소켓 으로 write : %d\n",client_csock[i]);
+            printf("socket to write : %d\n",client_csock[i]);
             if (write(client_csock[i], formatted_message, strlen(formatted_message)) < 0) {
                 perror("broadcast write");
             }
