@@ -509,11 +509,13 @@ void handleClient(int csock, int client_index, int (*pipe_fd)[2], struct sockadd
             return;
         }
         printf("start7\n");
+        i =0;
         while (fscanf(file, "%19s ", chatRoom ) == 1) {
-            strcat(result, chatRoom);
-            strcat(result, " ");
+            char temp[1000];  // 형식에 맞는 문자열을 저장할 임시 배열
+            snprintf(temp, sizeof(temp), "%s:%d ", chatRoom, i);
+            strcat(result, temp);
+            i++;
         }
-        strcat(result,"\n");
         fclose(file);
 
 
