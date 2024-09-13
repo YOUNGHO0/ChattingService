@@ -71,7 +71,7 @@ void initDaemon();
 FILE *open_file_in_saved_dir(const char *filename, const char *mode);
 int main(int argc, char **argv) {
 
-    initDaemon();
+
 
 
     // getcwd 함수를 사용하여 현재 디렉토리 경로를 가져옴
@@ -81,7 +81,7 @@ int main(int argc, char **argv) {
         perror("getcwd() error");
     }
 
-
+    initDaemon();
 
     int ssock;
     socklen_t clen;
@@ -581,11 +581,10 @@ void loadUsersFromFile() {
 
     fclose(file);
 }
-
 void initDaemon() {
     pid_t pid;
 
-    // 1단계: 부모 프로세스를 종료하고 자식 프로세스를 생성
+    // 첫 번째 fork
     pid = fork();
     if (pid < 0) {
         perror("fork");
@@ -596,13 +595,13 @@ void initDaemon() {
         exit(EXIT_SUCCESS);
     }
 
-    // 2단계: 새 세션을 생성하고 자식 프로세스를 세션 리더로 설정
+    // 새로운 세션 생성
     if (setsid() < 0) {
         perror("setsid");
         exit(EXIT_FAILURE);
     }
 
-    // 3단계: 다시 fork()를 호출해 세션 리더를 종료하고 데몬 프로세스를 완전 독립시킴
+    // 두 번째 fork (세션 리더를 탈출)
     pid = fork();
     if (pid < 0) {
         perror("fork");
@@ -612,26 +611,20 @@ void initDaemon() {
         exit(EXIT_SUCCESS);
     }
 
-    // 4단계: 새로운 파일 권한 설정 (파일 생성 시 권한 설정을 조절하기 위해)
+    // 데몬의 파일 권한 마스크 설정
     umask(0);
+    // 루트 디렉토리로 변경
+    chdir("/");
 
-    // 5단계: 루트 디렉토리로 이동해 파일 시스템과의 연결을 끊음
-    if (chdir("/") < 0) {
-        perror("chdir");
-        exit(EXIT_FAILURE);
-    }
-
-    // 6단계: 표준 입출력, 에러 스트림을 닫음
+    // 표준 입출력 파일 디스크립터를 /dev/null로 리다이렉트
     close(STDIN_FILENO);
     close(STDOUT_FILENO);
     close(STDERR_FILENO);
 
-    // 7단계: 로그를 파일에 기록하도록 설정 (선택 사항)
-    open("/dev/null", O_RDWR);  // 표준 입력을 /dev/null로 연결
-    dup(0);                     // 표준 출력을 /dev/null로 연결
-    dup(0);                     // 표준 오류를 /dev/null로 연결
+    open("/dev/null", O_RDONLY); // stdin
+    open("/dev/null", O_WRONLY); // stdout
+    open("/dev/null", O_RDWR);   // stderr
 }
-
 FILE *open_file_in_saved_dir(const char *filename, const char *mode) {
     char full_path[PATH_MAX];
     snprintf(full_path, sizeof(full_path), "%s/%s", current_directory_path, filename); // 전체 경로 생성
