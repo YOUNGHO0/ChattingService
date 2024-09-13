@@ -100,7 +100,7 @@ int main(int argc, char **argv) {
         perror("getcwd() error");
     }
 
-//    initDaemon();
+    initDaemon();
 
     int ssock;
     socklen_t clen;
