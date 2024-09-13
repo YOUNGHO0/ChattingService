@@ -496,7 +496,7 @@ void handleClient(int csock, int client_index, int (*pipe_fd)[2], struct sockadd
     strcat(result,"\n");
     fclose(file);
     // 채팅방 목록 클라이언트로 전송
-    write(csock, result, sizeof(result));
+    write(csock, result, strlen(result));
 
     result[0] = '\0';
     // 채팅방 번호 받아오기
