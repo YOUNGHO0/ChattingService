@@ -102,9 +102,21 @@ int main(int argc, char **argv) {
 
     // 파일이 없었던 경우에만 "default"를 추가합니다.
     if (fileIsNew) {
+        // 파일이 존재하지 않으면 "default"를 추가하기 위해 "w" 모드로 파일을 열고 작성
+        FILE *file = open_file_in_saved_dir("chatRoom.txt", "w");
+        if (file == NULL) {
+            perror("Error creating file");
+            return 1;
+        }
+
+        // "default"를 파일에 추가
         if (fprintf(file, "%s ", "default") < 0) {
             perror("fprintf");
+            fclose(file);
+            return 1;
         }
+
+        fclose(file);
     }
 
     // 빈 파일을 생성하고 나서 파일을 닫습니다
