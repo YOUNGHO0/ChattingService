@@ -116,6 +116,7 @@ int main(int argc, char **argv) {
                     // 검색 요청을 자식 프로세스에 보내기
                     sendMessageToChild(mesg, to_child, len);
                     printf("Chat Log\n");
+                    printf("Scan chat log ... please wait\n");
                     findKeyWordInData(mesg);
                 } else {
                     // 소켓으로 데이터를 비동기로 전송
@@ -176,7 +177,6 @@ void handleSearchCommand(const int *to_child, ssize_t bytes_read) {
     char res[BUFFER_SIZE];
     bytes_read = read(to_child[0], res, sizeof(res));
     if (bytes_read > 0) {
-        printf("서치 작동 \n");
         res[bytes_read] = '\0';
         if (strncmp(res, "search:", 7) == 0) {
             char *keyword = res + 7;
