@@ -16,64 +16,80 @@
 #define MAX_CLIENTS 100 /* 최대 클라이언트 수 */
 #define MAX_USERS 100 /* 최대 사용자 수 */
 
+//자식 프로세스에서 부모 프로세스로 전달하는 메세지 구조체
 typedef struct userinfo {
     char userName[10];
     char message[BUFSIZ];
-    int csockId;
-    int room_number;
+    int csockId; // 클라이언트 소켓 아이디
+    int room_number; //방 번호
 } userinfo;
 
 // 로그인 정보를 저장하는 구조체
+// 로그인시 사용
 typedef struct userLoginInfo {
     char userId[20];
     char password[20];
 } userLoginInfo;
 
-
+// 클라이언트 소켓이 어떤 pid를 가지고 있는 지 확인하는 구조체
 typedef struct {
     pid_t pid;
     int csock;
 } ProcessInfo;
 
 ProcessInfo process_info[1000];
-
-
 userLoginInfo users[MAX_USERS]; // 사용자 정보를 저장할 배열
 int user_count = 0; // 현재 등록된 사용자 수
 int client_count = 0;
-//int  client_csock[MAX_USERS];
 char current_directory_path[PATH_MAX]; // 현재 디렉토리 경로를 저장할 버퍼
 
+// 각 클라이언트마다 파이프 생성
 int pipe_fd[MAX_CLIENTS][2];
 
+//클라이언트가 어떤 방에 있는지 확인하는 구조체
 struct csock_info{
     int csock;
     int roomNumber;
 };
 
 struct csock_info client_csock_info[200];
+// 파일에서 사용자 로드
 void loadUsersFromFile();
+//사용자를 파일에 저장
 void saveUsersToFile();
+// 서버 소켓에 FD플레그를 지정하고 listen 함
 void setFdFlagAndListen(int ssock);
+// 현재 접속한 클라이언트중 방번호가 같은 클라이언트에게 메세지 전송
 void broadcastToClients(int client_count, const int client_pos, userinfo *user);
+//클라이언트 소켓 플레그 생성
 void setCsockFlag(int flags, int csock);
+// 파이프를 논블로킹으로 설정
 void setPipeWithNonblock( int pipe_fd[][2], int client_count);
+//네트워크 연결 설정
 void setNetworkConnection(struct sockaddr_in *cliaddr, userinfo *user);
+// 유저 로그인 처리
 void handleUserLogin(int csock, userinfo *user);
+//시그널 핸들러 설정 => 자식 프로세스가 죽은경우 처리 필요한 경우 처리
 void setSignalHandler();
+//broadcastToClients 에서 실제 전송을 담당하는 함수
 void broadCast(int client_count, const userinfo *user, const char *formatted_message);
+//해당하는 사용자 찾기
 int findUserIndex(char *userId, char *password);
+// 클라이언트 접속 후 fork이후 클라이언트 핸들링하는 함수
 void handleClient(int csock, int client_index, int pipe_fd[][2], struct sockaddr_in cliaddr);
-void handleUserLogin(int csock, userinfo *user);
-void setNetworkConnection(struct sockaddr_in *cliaddr, userinfo *user);
+// sigchld 시그널 처리하는 함수
 void handle_sigchld(int sig);
+// 데몬으로 실행하는 함수
 void initDaemon();
+// 데몬으로 실행되면 디렉토리가 변경되므로 디렉토리 변경전 위치를 기준으로 읽는 함수
 FILE *open_file_in_saved_dir(const char *filename, const char *mode);
-
+// 파일 존재 유무
 int file_exists(const char *filename) {
     struct stat buffer;
     return (stat(filename, &buffer) == 0);
 }
+
+
 int main(int argc, char **argv) {
 
 
@@ -121,19 +137,18 @@ int main(int argc, char **argv) {
 
     // 빈 파일을 생성하고 나서 파일을 닫습니다
     fclose(file);
-
-
     file = open_file_in_saved_dir("data.txt", "a");
     if (file == NULL) {
         perror("Error creating file");
         return 1;
     }
-    // 빈 파일을 생성하고 나서 파일을 닫습니다
     fclose(file);
 
 
+    // 시그널 핸들러설정
     setSignalHandler();
 
+    //소켓 할당
     if ((ssock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         perror("socket()");
         return -1;
@@ -144,6 +159,7 @@ int main(int argc, char **argv) {
         return -1;
     }
 
+    //서버 연결 설정
     memset(&servaddr, 0, sizeof(servaddr));
     servaddr.sin_family = AF_INET;
     servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -153,20 +169,28 @@ int main(int argc, char **argv) {
         perror("bind()");
         return -1;
     }
+    //서버 연결 설정 끝
 
+
+    // FDflag 설정 후 listen
     setFdFlagAndListen(ssock);
+
 
     clen = sizeof(cliaddr);
 
     while (1) {
+        // 클라이언트와 연결 수립
         int csock = accept(ssock, (struct sockaddr *)&cliaddr, &clen);
 
+        // 비동기로 연결이 되지 않은경우에
         if (csock < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 for (int i = 0; i < client_count; i++) {
                     userinfo user;
+                    //메세지가 있으면 해당 메세지 broadCast
                     int n = read(pipe_fd[i][0], &user, sizeof(user));
                     if (n > 0) {
+
                         broadcastToClients(client_count, i, &user);
                     }
                 }
@@ -176,24 +200,26 @@ int main(int argc, char **argv) {
             }
         }
 
-        for(int k =0; k< client_count; k++){
-            printf("socket %d pos val : %d\n", k,client_csock_info[k].csock);
-        }
+        //클라이언트 소켓 플래그 생성
         int flags = fcntl(csock, F_GETFL, 0);
         setCsockFlag(flags, csock);
 
+        // 최대 클라이언트 갯수 확인
         if (client_count >= MAX_CLIENTS) {
             printf("Max clients reached. Connection rejected.\n");
             close(csock);
             continue;
         }
-
+        // 논블로킹으로 설정
         setPipeWithNonblock(pipe_fd, client_count);
+
+
         pid_t  pid = fork();
         if ( pid == 0) { // 자식 프로세스
             close(ssock);
             handleClient(csock, client_count, pipe_fd, cliaddr);
         }
+        //부모에서 사용
         process_info[client_count].pid = pid;
         process_info[client_count].csock = csock;
         client_csock_info[client_count].csock = csock;
@@ -369,11 +395,13 @@ void setNetworkConnection(struct sockaddr_in *cliaddr, userinfo *user) {/* 네트�
 }
 
 void handleUserLogin(int csock, userinfo *user) {
+
     char choice[10];
     write(csock, "input type (login/signup): ", strlen("input type (login/signup):"));
     read(csock, choice, sizeof(choice));
     choice[strcspn(choice, "\n")] = '\0'; // 줄바꿈 제거
 
+    // 로그인 과정 로그인 과정에 맞게 서버에 메세지 전송 읽기 작업
     if (strcmp(choice, "login") == 0) {
         char userId[20], password[20];
         write(csock, "ID: ", strlen("ID: "));
@@ -395,6 +423,7 @@ void handleUserLogin(int csock, userinfo *user) {
             exit(0);
         }
     } else if (strcmp(choice, "signup") == 0) {
+        // 회원가입의 경우 처리
         if (user_count >= MAX_USERS) {
             write(csock, "MAX User \n", strlen("MAX User \n"));
             close(csock);
@@ -409,6 +438,7 @@ void handleUserLogin(int csock, userinfo *user) {
         write(csock, "PW: ", strlen("PW: "));
         read(csock, password, sizeof(password));
         password[strcspn(password, "\n")] = '\0'; // 줄바꿈 제거
+
 
         loadUsersFromFile();
         // 중복 확인
@@ -428,6 +458,7 @@ void handleUserLogin(int csock, userinfo *user) {
         strcpy(user->userName, userId);
         write(csock, "SUCCESS\n", strlen("SUCCESS\n"));
     } else {
+        //아예 다른 메뉴인 경우 처리
         write(csock, "WRONG OPTION QUIT CONNECTION \n", strlen("WRONG OPTION QUIT CONNECTION \n"));
         for(int k =0; k< client_count; k++){
             printf("socket pos : %d  number  :%d\n", k,client_csock_info[k].csock);
@@ -444,6 +475,7 @@ void handleClient(int csock, int client_index, int (*pipe_fd)[2], struct sockadd
     setNetworkConnection(&cliaddr, &user);
 
     handleUserLogin(csock, &user);
+    //채팅방 생성
     write(csock, "Input ChatRoom Number\nIf you want to create use 'create:{channelName} to create channel\n", strlen("Input ChatRoom Number\nIf you want to create use 'create:{channelName} to create channel\n"));
     FILE *file = open_file_in_saved_dir("chatRoom.txt", "r");
     if (file == NULL) {
@@ -462,11 +494,11 @@ void handleClient(int csock, int client_index, int (*pipe_fd)[2], struct sockadd
     }
     strcat(result,"\n");
     fclose(file);
-
+    // 채팅방 목록 클라이언트로 전송
     write(csock, result, strlen(result));
 
     result[0] = '\0';
-
+    // 채팅방 번호 받아오기
     char chatRoomNumber[2000];
     int room =read(csock, chatRoomNumber, sizeof(chatRoomNumber));//
     if (room < 0) {
@@ -481,9 +513,10 @@ void handleClient(int csock, int client_index, int (*pipe_fd)[2], struct sockadd
     write(pipe_fd[client_index][1], &user, sizeof(user));
 
 
-
+    // 채팅방 번호를 생성하는 경우
     if (strncmp(chatRoomNumber, "create:", 7) == 0) {
 
+        // 파일에 채팅방 생성후 파일 닫기
         int count = 0;
         printf("start\n");
         FILE *file = open_file_in_saved_dir("chatRoom.txt", "r");
@@ -521,6 +554,7 @@ void handleClient(int csock, int client_index, int (*pipe_fd)[2], struct sockadd
 
         printf("updsated room_number : %d\n",updated_room_count);
 
+        // 사용자 방번호 처리
         user.room_number=updated_room_count-1;
         printf("start6\n");
         write(csock, "Channel Added\n", strlen("Channel Added\n"));
@@ -549,11 +583,14 @@ void handleClient(int csock, int client_index, int (*pipe_fd)[2], struct sockadd
 
         char select[2000];  // 충분히 큰 버퍼를 준비
         // "select:"와 원래 문자열을 결합
+        // 부모 프로세스로 사용자가 선택한 방번호 전송
         snprintf(select, sizeof(select), "select:%d",user.room_number );
         strcpy(user.message,select);
         write(pipe_fd[client_index][1], &user, sizeof(user));
 
     } else {
+        // 사용자가 방번호를 선택한 경우
+        // 이상한 응답이 들어오면 가장 앞의 방 0번이 선택됨
         char select[2000];  // 충분히 큰 버퍼를 준비
         int num =atoi(chatRoomNumber);
         user.room_number = num;
@@ -565,6 +602,7 @@ void handleClient(int csock, int client_index, int (*pipe_fd)[2], struct sockadd
     }
 
 
+    //채팅 과정
     while (1) {
         int n = read(csock, user.message, BUFSIZ); // 클라이언트로부터 데이터 읽기
         if (n == 0) {
@@ -577,6 +615,7 @@ void handleClient(int csock, int client_index, int (*pipe_fd)[2], struct sockadd
 
         user.message[n] = '\0';
 
+        // 로그아웃 처리
         if (strncmp(user.message, "...", 3) == 0) {
             printf("exit client thread\n");
             close(pipe_fd[client_index][1]); // 자식의 쓰기 디스크립터 닫기
