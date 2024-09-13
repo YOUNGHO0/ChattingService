@@ -285,7 +285,7 @@ void broadcastToClients(int client_count, int client_pos, userinfo *user) {
         char buffer[BUFSIZ];
         int len;
 
-        // 포맷된 문자열을 버퍼에 저장합니다.
+//         포맷된 문자열을 버퍼에 저장합니다.
         len = snprintf(buffer, sizeof(buffer), "\nYou Selected channel:%d\nStart chat", number);
         if (len < 0) {
             perror("snprintf");
@@ -295,9 +295,10 @@ void broadcastToClients(int client_count, int client_pos, userinfo *user) {
 
 
         // 포맷된 문자열을 클라이언트 소켓에 씁니다.
-        if (write(user->csockId, buffer, len) < 0) {
+        if (write(user->csockId, "/nsend test\n", strlen("\nsend test\n")) < 0) {
             perror("broadcast write");
         }
+
         return;
     }
     broadCast(client_count, user, formatted_message);
@@ -533,6 +534,7 @@ void handleClient(int csock, int client_index, int (*pipe_fd)[2], struct sockadd
         }
         printf("start7\n");
         i =0;
+        result[0] = '\0';
         while (fscanf(file, "%19s ", chatRoom ) == 1) {
             char temp[1000];  // 형식에 맞는 문자열을 저장할 임시 배열
             snprintf(temp, sizeof(temp), "%s:%d ", chatRoom, i);
@@ -543,7 +545,6 @@ void handleClient(int csock, int client_index, int (*pipe_fd)[2], struct sockadd
         printf("result : %s\n",result);
         write(csock, result, sizeof (result));
 
-        result[0] = '\0';
         char select[2000];  // 충분히 큰 버퍼를 준비
         // "select:"와 원래 문자열을 결합
         snprintf(select, sizeof(select), "select:%d",user.room_number );
