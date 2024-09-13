@@ -274,7 +274,7 @@ void broadcastToClients(int client_count, int client_pos, userinfo *user) {
         int len;
 
         // 포맷된 문자열을 버퍼에 저장합니다.
-        len = snprintf(buffer, sizeof(buffer), "You Selected channel:%d\nStart chat", number);
+        len = snprintf(buffer, sizeof(buffer), "\nYou Selected channel:%d\nStart chat", number);
         if (len < 0) {
             perror("snprintf");
             return;
