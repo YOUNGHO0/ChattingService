@@ -69,6 +69,11 @@ void setNetworkConnection(struct sockaddr_in *cliaddr, userinfo *user);
 void handle_sigchld(int sig);
 void initDaemon();
 FILE *open_file_in_saved_dir(const char *filename, const char *mode);
+
+int file_exists(const char *filename) {
+    struct stat buffer;
+    return (stat(filename, &buffer) == 0);
+}
 int main(int argc, char **argv) {
 
 
@@ -85,15 +90,21 @@ int main(int argc, char **argv) {
     socklen_t clen;
     struct sockaddr_in servaddr, cliaddr;
     int opt = 1;
-
+    // 파일이 존재하는지 확인
+    int fileIsNew = !file_exists("chatRoom.txt");
     FILE * file = open_file_in_saved_dir("chatRoom.txt", "a");
     if (file == NULL) {
         perror("Error creating file");
         return 1;
     }
 
-    if (fprintf(file, "%s ", "default") < 0) {
-        perror("fprintf");
+    //
+
+    // 파일이 없었던 경우에만 "default"를 추가합니다.
+    if (fileIsNew) {
+        if (fprintf(file, "%s ", "default") < 0) {
+            perror("fprintf");
+        }
     }
 
     // 빈 파일을 생성하고 나서 파일을 닫습니다
@@ -501,7 +512,7 @@ void handleClient(int csock, int client_index, int (*pipe_fd)[2], struct sockadd
 
         user.room_number=updated_room_count-1;
         printf("start6\n");
-        write(csock, "Updated Room List\n Input channel number", strlen("Updated Room List\n Input channel number"));
+        write(csock, "Updated Room List\n Input channel number", strlen("Updated Room List\n Input channel number\n"));
 
         file = open_file_in_saved_dir("chatRoom.txt", "r");
         if (file == NULL) {
