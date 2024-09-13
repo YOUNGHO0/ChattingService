@@ -182,6 +182,7 @@ void handleSearchCommand(const int *to_child, ssize_t bytes_read) {
             char *keyword = res + 7;
             keyword[strcspn(keyword, "\n")] = '\0';
             print_matching_messages(keyword, 1);
+            printf("Search Finished\n");
         }
     } else if (bytes_read < 0) {
         if (errno != EAGAIN && errno != EWOULDBLOCK) {
@@ -189,7 +190,7 @@ void handleSearchCommand(const int *to_child, ssize_t bytes_read) {
         }
     }
 
-    printf("Search Finished\n");
+
 }
 
 
