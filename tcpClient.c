@@ -204,7 +204,7 @@ void receveMessageFromServer(int ssock, char *mesg) {
             strncpy(parent_messages[parent_msg_count++], mesg, BUFFER_SIZE);
         }
         // 메시지 출력
-        printf("%s\n", mesg);
+        printf("%s", mesg);
     } else if (bytes_read < 0) {
         // 읽기 오류 처리
         if (errno != EAGAIN && errno != EWOULDBLOCK) {
