@@ -524,7 +524,7 @@ void handleClient(int csock, int client_index, int (*pipe_fd)[2], struct sockadd
 
         user.room_number=updated_room_count-1;
         printf("start6\n");
-        write(csock, "Channel Added", strlen("Channel Added"));
+        write(csock, "Channel Added\n", strlen("Channel Added"));
 
         file = open_file_in_saved_dir("chatRoom.txt", "r");
         if (file == NULL) {
