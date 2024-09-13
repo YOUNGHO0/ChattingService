@@ -55,7 +55,7 @@ void sendMessageToServer(int ssock, const char *mesg, ssize_t len);
 bool getLoggable();
 
 int main(int argc, char **argv) {
-    printf("This is a fork-based client\n");
+    printf("hello this is client\n");
     int ssock;
     struct sockaddr_in servaddr;
     char mesg[BUFSIZ];
@@ -80,6 +80,7 @@ int main(int argc, char **argv) {
     int to_child[2];
     int to_parent[2];
 
+    // 파이프 총 2세트 생성
     makeChildPipe(to_child);
     makeParentPipe(to_parent);
     int flags = setSocketPipeToNoneblock(ssock);
@@ -91,7 +92,9 @@ int main(int argc, char **argv) {
         exit(-1);
     }
 
+    //자식프로세스
     if (pid == 0) {
+        //디스크립터 닫기
         close(to_child[1]);
         close(to_parent[0]);
 
@@ -104,6 +107,7 @@ int main(int argc, char **argv) {
             usleep(100000); // 0.1초 지연
         }
     } else {
+        //디스크립터 닫기
         // 부모 프로세스: 키보드 입력 받기 및 메시지 전송
         close(to_child[0]);
         close(to_parent[1]);
