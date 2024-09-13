@@ -292,10 +292,8 @@ void broadcastToClients(int client_count, int client_pos, userinfo *user) {
             return;
         }
 
-
-
         // 포맷된 문자열을 클라이언트 소켓에 씁니다.
-        if (write(user->csockId, "/nsend test\n", strlen("\nsend test\n")) < 0) {
+        if (write(client_csock_info[client_pos].csock, buffer, len) < 0) {
             perror("broadcast write");
         }
 
@@ -525,7 +523,7 @@ void handleClient(int csock, int client_index, int (*pipe_fd)[2], struct sockadd
 
         user.room_number=updated_room_count-1;
         printf("start6\n");
-        write(csock, "Channel Added\n", strlen("Channel Added"));
+        write(csock, "Channel Added\n", strlen("Channel Added\n"));
 
         file = open_file_in_saved_dir("chatRoom.txt", "r");
         if (file == NULL) {
