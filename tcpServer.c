@@ -286,14 +286,14 @@ void broadcastToClients(int client_count, int client_pos, userinfo *user) {
         int len;
 
 //         포맷된 문자열을 버퍼에 저장합니다.
-        len = snprintf(buffer, sizeof(buffer), "\nYou Selected channel:%d\nStart chat", number);
+        len = snprintf(buffer, sizeof(buffer), "\nYou Selected channel:%d\nStart chat\n", number);
         if (len < 0) {
             perror("snprintf");
             return;
         }
 
         // 포맷된 문자열을 클라이언트 소켓에 씁니다.
-        if (write(client_csock_info[client_pos].csock, buffer, sizeof(buffer)) < 0) {
+        if (write(client_csock_info[client_pos].csock, buffer, len) < 0) {
             perror("broadcast write");
         }
 
@@ -533,7 +533,7 @@ void handleClient(int csock, int client_index, int (*pipe_fd)[2], struct sockadd
         printf("start7\n");
         i =0;
         result[0] = '\0';
-        while (fscanf(file, "%19s ", chatRoom ) == 1) {
+        while (fscanf(file, "%s ", chatRoom ) == 1) {
             char temp[1000];  // 형식에 맞는 문자열을 저장할 임시 배열
             snprintf(temp, sizeof(temp), "%s:%d ", chatRoom, i);
             strcat(result, temp);
