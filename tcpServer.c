@@ -42,7 +42,7 @@ userLoginInfo users[MAX_USERS]; // 사용자 정보를 저장할 배열
 int user_count = 0; // 현재 등록된 사용자 수
 int client_count = 0;
 //int  client_csock[MAX_USERS];
-
+char current_directory_path[PATH_MAX]; // 현재 디렉토리 경로를 저장할 버퍼
 
 int pipe_fd[MAX_CLIENTS][2];
 
@@ -68,25 +68,43 @@ void handleUserLogin(int csock, userinfo *user);
 void setNetworkConnection(struct sockaddr_in *cliaddr, userinfo *user);
 void handle_sigchld(int sig);
 void initDaemon();
-char *getAbsolutePath(const char *relativePath) {
-    static char absPath[PATH_MAX];
-    snprintf(absPath, sizeof(absPath), "%s/%s", absPath, relativePath);
-    return absPath;
-}
+FILE *open_file_in_saved_dir(const char *filename, const char *mode);
 int main(int argc, char **argv) {
+
+    initDaemon();
+
+
+    // getcwd 함수를 사용하여 현재 디렉토리 경로를 가져옴
+    if (getcwd(current_directory_path, sizeof(current_directory_path)) != NULL) {
+        printf("currentDirectory: %s\n", current_directory_path);
+    } else {
+        perror("getcwd() error");
+    }
+
+
 
     int ssock;
     socklen_t clen;
     struct sockaddr_in servaddr, cliaddr;
     int opt = 1;
 
-    FILE * file = fopen("chatRoom.txt", "w");
+    FILE * file = open_file_in_saved_dir("chatRoom.txt", "w");
     if (file == NULL) {
         perror("Error creating file");
         return 1;
     }
     // 빈 파일을 생성하고 나서 파일을 닫습니다
     fclose(file);
+
+
+    file = open_file_in_saved_dir("data.txt", "w");
+    if (file == NULL) {
+        perror("Error creating file");
+        return 1;
+    }
+    // 빈 파일을 생성하고 나서 파일을 닫습니다
+    fclose(file);
+
 
     setSignalHandler();
 
@@ -206,7 +224,7 @@ void broadcastToClients(int client_count, int client_pos, userinfo *user) {
     if (strncmp(user->message, "create:", 7) == 0){
 
         printf("start write\n");
-        FILE *file = fopen("chatRoom.txt", "a");
+        FILE *file = open_file_in_saved_dir("chatRoom.txt", "a");
         if (file == NULL) {
             perror("fopen");
             return;
@@ -386,7 +404,7 @@ void handleClient(int csock, int client_index, int (*pipe_fd)[2], struct sockadd
 
     handleUserLogin(csock, &user);
 
-    FILE *file = fopen("chatRoom.txt", "r");
+    FILE *file = open_file_in_saved_dir("chatRoom.txt", "r");
     if (file == NULL) {
         perror("fopen");
         return;
@@ -424,7 +442,7 @@ void handleClient(int csock, int client_index, int (*pipe_fd)[2], struct sockadd
 
         int count = 0;
         printf("start\n");
-        FILE *file = fopen("chatRoom.txt", "r");
+        FILE *file = open_file_in_saved_dir("chatRoom.txt", "r");
         if (file == NULL) {
             perror("fopen");
             return;
@@ -444,7 +462,7 @@ void handleClient(int csock, int client_index, int (*pipe_fd)[2], struct sockadd
         do{
             updated_room_count =0;
 
-            FILE *file = fopen("chatRoom.txt", "r");
+            FILE *file = open_file_in_saved_dir("chatRoom.txt", "r");
             if (file == NULL) {
                 perror("fopen");
                 return;
@@ -463,7 +481,7 @@ void handleClient(int csock, int client_index, int (*pipe_fd)[2], struct sockadd
         printf("start6\n");
         write(csock, "Updated Room List\n", strlen("Updated Room List\n"));
 
-        file = fopen("chatRoom.txt", "r");
+        file = open_file_in_saved_dir("chatRoom.txt", "r");
         if (file == NULL) {
             perror("fopen");
             return;
@@ -537,7 +555,7 @@ int findUserIndex(char *userId, char *password) {
 }
 
 void saveUsersToFile() {
-    FILE *file = fopen( "data.txt", "w");
+    FILE *file = open_file_in_saved_dir( "data.txt", "w");
     if (file == NULL) {
         perror("fopen");
         return;
@@ -551,7 +569,7 @@ void saveUsersToFile() {
 }
 
 void loadUsersFromFile() {
-    FILE *file = fopen("data.txt", "r");
+    FILE *file = open_file_in_saved_dir("data.txt", "r");
     if (file == NULL) {
         perror("fopen");
         return;
@@ -563,3 +581,60 @@ void loadUsersFromFile() {
 
     fclose(file);
 }
+
+void initDaemon() {
+    pid_t pid;
+
+    // 1단계: 부모 프로세스를 종료하고 자식 프로세스를 생성
+    pid = fork();
+    if (pid < 0) {
+        perror("fork");
+        exit(EXIT_FAILURE);
+    }
+    if (pid > 0) {
+        // 부모 프로세스 종료
+        exit(EXIT_SUCCESS);
+    }
+
+    // 2단계: 새 세션을 생성하고 자식 프로세스를 세션 리더로 설정
+    if (setsid() < 0) {
+        perror("setsid");
+        exit(EXIT_FAILURE);
+    }
+
+    // 3단계: 다시 fork()를 호출해 세션 리더를 종료하고 데몬 프로세스를 완전 독립시킴
+    pid = fork();
+    if (pid < 0) {
+        perror("fork");
+        exit(EXIT_FAILURE);
+    }
+    if (pid > 0) {
+        exit(EXIT_SUCCESS);
+    }
+
+    // 4단계: 새로운 파일 권한 설정 (파일 생성 시 권한 설정을 조절하기 위해)
+    umask(0);
+
+    // 5단계: 루트 디렉토리로 이동해 파일 시스템과의 연결을 끊음
+    if (chdir("/") < 0) {
+        perror("chdir");
+        exit(EXIT_FAILURE);
+    }
+
+    // 6단계: 표준 입출력, 에러 스트림을 닫음
+    close(STDIN_FILENO);
+    close(STDOUT_FILENO);
+    close(STDERR_FILENO);
+
+    // 7단계: 로그를 파일에 기록하도록 설정 (선택 사항)
+    open("/dev/null", O_RDWR);  // 표준 입력을 /dev/null로 연결
+    dup(0);                     // 표준 출력을 /dev/null로 연결
+    dup(0);                     // 표준 오류를 /dev/null로 연결
+}
+
+FILE *open_file_in_saved_dir(const char *filename, const char *mode) {
+    char full_path[PATH_MAX];
+    snprintf(full_path, sizeof(full_path), "%s/%s", current_directory_path, filename); // 전체 경로 생성
+    return fopen(full_path, mode); // 파일 열기
+}
+
