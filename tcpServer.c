@@ -86,7 +86,7 @@ int main(int argc, char **argv) {
     struct sockaddr_in servaddr, cliaddr;
     int opt = 1;
 
-    FILE * file = open_file_in_saved_dir("chatRoom.txt", "w");
+    FILE * file = open_file_in_saved_dir("chatRoom.txt", "a");
     if (file == NULL) {
         perror("Error creating file");
         return 1;
