@@ -258,16 +258,18 @@ void broadcastToClients(int client_count, int client_pos, userinfo *user) {
     else if(strncmp(user->message, "select:", 7) == 0) {
         int number = atoi(user->message + 7);
         client_csock_info[client_pos].roomNumber = number;
-        printf("select room number is %d\n",number);
+        printf("Select room number is %d\n",number);
         char buffer[BUFSIZ];
         int len;
 
         // 포맷된 문자열을 버퍼에 저장합니다.
-        len = snprintf(buffer, sizeof(buffer), "Now you are in channel %d\n start chat", number);
+        len = snprintf(buffer, sizeof(buffer), "You Selected channel:%d\nStart chat", number);
         if (len < 0) {
             perror("snprintf");
             return;
         }
+
+
 
         // 포맷된 문자열을 클라이언트 소켓에 씁니다.
         if (write(user->csockId, buffer, len) < 0) {
@@ -420,7 +422,7 @@ void handleClient(int csock, int client_index, int (*pipe_fd)[2], struct sockadd
     setNetworkConnection(&cliaddr, &user);
 
     handleUserLogin(csock, &user);
-    write(csock, "Input ChatRoom Number\n if you want to create use 'create:{channelName} to create channel\n", strlen("Input ChatRoom Number\n if you want to create use 'create:{channelName} to create channel\n"));
+    write(csock, "Input ChatRoom Number\nIf you want to create use 'create:{channelName} to create channel\n", strlen("Input ChatRoom Number\nIf you want to create use 'create:{channelName} to create channel\n"));
     FILE *file = open_file_in_saved_dir("chatRoom.txt", "r");
     if (file == NULL) {
         perror("fopen");
