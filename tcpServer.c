@@ -293,7 +293,7 @@ void broadcastToClients(int client_count, int client_pos, userinfo *user) {
         }
 
         // 포맷된 문자열을 클라이언트 소켓에 씁니다.
-        if (write(client_csock_info[client_pos].csock, buffer, len) < 0) {
+        if (write(client_csock_info[client_pos].csock, buffer, sizeof(buffer)) < 0) {
             perror("broadcast write");
         }
 
