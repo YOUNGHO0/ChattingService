@@ -133,7 +133,7 @@ int main(int argc, char **argv) {
                     close(to_parent[0]);
                     close(to_child[1]);
                     close(to_child[0]);
-                    printf("종료합니다.\n");
+                    printf("exit.\n");
                     exit(0);
                 }
             }
@@ -328,10 +328,9 @@ void print_matching_messages(const char *keyword, int is_parent) {
     int count = is_parent ? parent_msg_count : child_msg_count;
     char (*messages)[BUFFER_SIZE] = is_parent ? parent_messages : child_messages;
 
-    printf("검색어 '%s'를 포함하는 메시지:\n", keyword);
     for (int i = 0; i < count; ++i) {
         if (KMP_search(messages[i], keyword)) {
-            printf("%s", messages[i]);
+            printf("%s\n", messages[i]);
         }
     }
 }
