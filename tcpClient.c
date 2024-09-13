@@ -188,6 +188,8 @@ void handleSearchCommand(const int *to_child, ssize_t bytes_read) {
             print_error("read() from pipefd1");
         }
     }
+
+    printf("Search Finished\n");
 }
 
 
