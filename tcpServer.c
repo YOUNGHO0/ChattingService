@@ -100,7 +100,7 @@ int main(int argc, char **argv) {
         perror("getcwd() error");
     }
 
-    initDaemon();
+//    initDaemon();
 
     int ssock;
     socklen_t clen;
@@ -483,6 +483,7 @@ void handleClient(int csock, int client_index, int (*pipe_fd)[2], struct sockadd
         return;
     }
 
+    //채팅방 보여주기
     char result[2000] = {'\0'};
     char chatRoom[2000];
     int i =0;
@@ -495,7 +496,7 @@ void handleClient(int csock, int client_index, int (*pipe_fd)[2], struct sockadd
     strcat(result,"\n");
     fclose(file);
     // 채팅방 목록 클라이언트로 전송
-    write(csock, result, strlen(result));
+    write(csock, result, sizeof(result));
 
     result[0] = '\0';
     // 채팅방 번호 받아오기
@@ -565,21 +566,23 @@ void handleClient(int csock, int client_index, int (*pipe_fd)[2], struct sockadd
             return;
         }
         printf("start7\n");
-        int i = 0;
+
+        i = 0;
         result[0] = '\0';  // 결과 문자열 초기화
 
-        while (fscanf(file, "%s", chatRoom) == 1) {
-            char temp[1000];
+        while (fscanf(file, "%19s ", chatRoom ) == 1) {
+            char temp[1000];  // 형식에 맞는 문자열을 저장할 임시 배열
             snprintf(temp, sizeof(temp), "%s:%d ", chatRoom, i);
-            strncat(result, temp, sizeof(result) - strlen(result) - 1);  // 버퍼 오버플로우 방지
+            strcat(result, temp);
             i++;
         }
+        strcat(result,"\n");
         fclose(file);
 
         printf("result : %s\n", result);
 
         // 결과 문자열의 실제 길이를 사용하여 write 호출
-//        write(csock, result, strlen(result) + 1);  // null 문자 포함
+        write(csock, result, strlen(result));
 
         char select[2000];  // 충분히 큰 버퍼를 준비
         // "select:"와 원래 문자열을 결합
