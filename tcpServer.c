@@ -541,8 +541,7 @@ void handleClient(int csock, int client_index, int (*pipe_fd)[2], struct sockadd
         }
         fclose(file);
 
-
-        write(csock, result, strlen(result));
+        write(csock, result, sizeof (result));
 
         result[0] = '\0';
         char select[2000];  // 충분히 큰 버퍼를 준비
