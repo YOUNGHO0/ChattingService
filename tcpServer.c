@@ -72,8 +72,6 @@ FILE *open_file_in_saved_dir(const char *filename, const char *mode);
 int main(int argc, char **argv) {
 
 
-
-
     // getcwd 함수를 사용하여 현재 디렉토리 경로를 가져옴
     if (getcwd(current_directory_path, sizeof(current_directory_path)) != NULL) {
         printf("currentDirectory: %s\n", current_directory_path);
@@ -93,11 +91,16 @@ int main(int argc, char **argv) {
         perror("Error creating file");
         return 1;
     }
+
+    if (fprintf(file, "%s ", "default") < 0) {
+        perror("fprintf");
+    }
+
     // 빈 파일을 생성하고 나서 파일을 닫습니다
     fclose(file);
 
 
-    file = open_file_in_saved_dir("data.txt", "w");
+    file = open_file_in_saved_dir("data.txt", "a");
     if (file == NULL) {
         perror("Error creating file");
         return 1;
@@ -456,7 +459,7 @@ void handleClient(int csock, int client_index, int (*pipe_fd)[2], struct sockadd
         printf("start2\n");
 
         fclose(file);
-        sleep(1);
+        sleep(2);
         printf("start4\n");
         int updated_room_count;
         do{
