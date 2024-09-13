@@ -406,7 +406,7 @@ void handleClient(int csock, int client_index, int (*pipe_fd)[2], struct sockadd
     setNetworkConnection(&cliaddr, &user);
 
     handleUserLogin(csock, &user);
-
+    write(csock, "Input ChatRoom Number", strlen("Input ChatRoom Number"));
     FILE *file = open_file_in_saved_dir("chatRoom.txt", "r");
     if (file == NULL) {
         perror("fopen");
@@ -415,9 +415,12 @@ void handleClient(int csock, int client_index, int (*pipe_fd)[2], struct sockadd
 
     char result[2000] = {'\0'};
     char chatRoom[2000];
+    int i =0;
     while (fscanf(file, "%19s ", chatRoom ) == 1) {
-        strcat(result, chatRoom);
-        strcat(result, " ");
+        char temp[1000];  // 형식에 맞는 문자열을 저장할 임시 배열
+        snprintf(temp, sizeof(temp), "%s:%d ", chatRoom, i);
+        strcat(result, temp);
+        i++;
     }
     strcat(result,"\n");
     fclose(file);
